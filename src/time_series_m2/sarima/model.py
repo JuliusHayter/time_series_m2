@@ -102,6 +102,7 @@ def forecast_days(
 
     pieces = []
     fitted = None
+    start_params = None
     for n, day in enumerate(pd.DatetimeIndex(days)):
         target = _target_hours(index, day)
         if len(target) == 0:
@@ -123,9 +124,13 @@ def forecast_days(
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # convergence chatter on every refit
             if fitted is None or n % refit_every == 0:
+                # Warm start from the previous refit: same model, two months later,
+                # so the optimizer lands close to where it left off. Halves the fit
+                # time and reads nothing but past estimates.
                 fitted = _specify(load[hist], exog[hist], order, seasonal_order).fit(
-                    disp=False, maxiter=100
+                    disp=False, maxiter=100, start_params=start_params
                 )
+                start_params = fitted.params
                 state = fitted
             else:
                 state = fitted.apply(load[hist], exog=exog[hist], refit=False)
