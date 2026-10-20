@@ -92,21 +92,33 @@ def walk_forward(
     params: Dict,
     base: Optional[str] = None,
     refit_every_days: int = 90,
-) -> pd.Series:
+    score_frames: Optional[Dict[str, pd.DataFrame]] = None,
+):
     """Day-ahead forecasts with the model refitted as time advances.
 
     Before each block, the model is fitted on every day whose load is fully
     realized at the first auction of the block: the auction for day S closes on
     S-1, so the last usable day is S-2. Fixed tree count, no early stopping, so
     nothing here reads the block being scored.
+
+    ``score_frames`` maps a name to another version of ``frame`` (same index, other
+    feature values, e.g. a noisy weather forecast). The model is still fitted on
+    ``frame``; each block is scored on every version, and a DataFrame with one
+    column per name is returned instead of a Series.
     """
     days = pd.DatetimeIndex(days)
     day_of_row = frame.index.normalize()
-    pieces = []
+    versions = score_frames if score_frames is not None else {"forecast": frame}
+    pieces = {name: [] for name in versions}
     for start in range(0, len(days), refit_every_days):
         block = days[start : start + refit_every_days]
         last_usable = block[0] - pd.Timedelta(days=2)
         booster = fit(frame[day_of_row <= last_usable], columns, base=base, params=params)
-        rows = frame[day_of_row.isin(block)]
-        pieces.append(forecast(booster, rows))
-    return pd.concat(pieces)
+        for name, version in versions.items():
+            rows = version[day_of_row.isin(block)]
+            pieces[name].append(forecast(booster, rows))
+
+    out = {name: pd.concat(parts) for name, parts in pieces.items()}
+    if score_frames is None:
+        return out["forecast"]
+    return pd.DataFrame(out)

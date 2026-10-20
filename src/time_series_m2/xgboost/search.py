@@ -58,3 +58,19 @@ def grid_search(
         if progress:
             print(row, flush=True)
     return pd.DataFrame(rows).sort_values("MAE").reset_index(drop=True)
+
+
+# A model refitted on train + val sees about 20% more data than the one early
+# stopping sized on train alone.
+TREES_SCALE_UP = 1.2
+
+
+def best_params(grid: pd.DataFrame, feature_set: str) -> Dict:
+    """Parameters of the validation winner for one feature set, ready for ``fit``."""
+    row = grid[grid["feature_set"] == feature_set].sort_values("MAE").iloc[0]
+    return dict(
+        max_depth=int(row["max_depth"]),
+        min_child_weight=int(row["min_child_weight"]),
+        n_estimators=int(round(row["n_trees"] * TREES_SCALE_UP)),
+        learning_rate=LEARNING_RATE,
+    )
