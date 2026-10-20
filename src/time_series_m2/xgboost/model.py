@@ -108,17 +108,22 @@ def walk_forward(
     """
     days = pd.DatetimeIndex(days)
     day_of_row = frame.index.normalize()
-    versions = score_frames if score_frames is not None else {"forecast": frame}
+    # An empty mapping means "nothing to score", which is a silent no-op rather
+    # than a choice anyone makes on purpose.
+    versions = score_frames or {"forecast": frame}
     pieces = {name: [] for name in versions}
     for start in range(0, len(days), refit_every_days):
         block = days[start : start + refit_every_days]
         last_usable = block[0] - pd.Timedelta(days=2)
         booster = fit(frame[day_of_row <= last_usable], columns, base=base, params=params)
         for name, version in versions.items():
-            rows = version[day_of_row.isin(block)]
+            # Each version carries its own index: masking it with a boolean array
+            # built from ``frame`` would score the wrong rows whenever the two
+            # disagree, and reassembling on ``version``'s index would hide it.
+            rows = version[version.index.normalize().isin(block)]
             pieces[name].append(forecast(booster, rows))
 
     out = {name: pd.concat(parts) for name, parts in pieces.items()}
-    if score_frames is None:
+    if not score_frames:
         return out["forecast"]
     return pd.DataFrame(out)

@@ -24,8 +24,14 @@ def run_grid() -> None:
     tables = []
     for feature_set in FEATURE_SETS:
         frame, _ = build_dataset(df, feature_set)
-        table = grid_search(frame, frame.attrs["feature_columns"], progress=True)
-        tables.append(table.assign(feature_set=feature_set))
+        tables.append(
+            grid_search(
+                frame,
+                frame.attrs["feature_columns"],
+                feature_set=feature_set,
+                progress=True,
+            )
+        )
     pd.concat(tables).to_csv(OUT / "grid_val.csv", index=False)
 
 

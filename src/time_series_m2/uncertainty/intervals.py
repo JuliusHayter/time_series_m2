@@ -31,13 +31,26 @@ def rolling_conformal(
     Returns columns ``lower`` and ``upper`` on the index of ``pred``.
     """
     both = pd.concat([actual.rename("a"), pred.rename("p")], axis=1).dropna()
+    if both.empty:
+        raise ValueError("actual and pred never overlap: there is no error history to calibrate on")
+
     err = both["a"] - both["p"]
     days = pd.DatetimeIndex(err.index.date)
     wide = pd.DataFrame({"day": days, "hour": err.index.hour, "err": err.to_numpy()}).pivot_table(
         index="day", columns="hour", values="err", aggfunc="mean"
     )
+    # Hours absent from the history would otherwise shift every later column left,
+    # so a band asked for hour 19 would quietly be hour 20's. Columns are addressed
+    # positionally below; this makes position and hour the same number again.
+    wide = wide.reindex(columns=range(24))
+
     # Reindex to every calendar day so that "the last 60 rows" means 60 days.
-    wide = wide.reindex(pd.date_range(wide.index.min(), pred.index.max().date()))
+    last_day = pred.index.max().date()
+    if last_day < wide.index.min().date():
+        raise ValueError(
+            "pred ends before the first observed error day: no calibration history applies"
+        )
+    wide = wide.reindex(pd.date_range(wide.index.min(), last_day))
 
     tail = (1 - nominal) / 2
     roll = wide.rolling(window_days, min_periods=min_days)

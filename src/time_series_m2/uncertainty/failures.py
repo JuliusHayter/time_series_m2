@@ -11,7 +11,14 @@ from ..utils.metrics import peak_mask
 
 
 def conditions(df: pd.DataFrame) -> pd.DataFrame:
-    """Boolean and categorical descriptors of each hour, known before the auction."""
+    """Descriptors of each hour, for slicing errors after the fact.
+
+    Diagnostics only, never features. ``load_decile`` is cut on the realized load,
+    which is the forecast target itself, and both decile edges are fitted over the
+    whole sample including the test split. Feeding any of this to a model would
+    leak the answer; ``utils.features`` is where features that respect the cutoff
+    live.
+    """
     cal = add_calendar_features(df)
     out = pd.DataFrame(index=df.index)
     out["temp_decile"] = pd.qcut(df["temperature_c"], 10, labels=False, duplicates="drop") + 1
