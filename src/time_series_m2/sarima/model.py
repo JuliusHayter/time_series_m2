@@ -23,8 +23,11 @@ from ..utils.calendar_fr import add_calendar_features
 from ..utils.data import information_cutoff
 from ..utils.features import BASE_TEMP_C
 
-DEFAULT_ORDER: Tuple[int, int, int] = (2, 1, 0)
-DEFAULT_SEASONAL_ORDER: Tuple[int, int, int, int] = (0, 1, 1, 24)
+# Picked by sarima.search on 52 days of 2024 (MAE 3008 MW). The (2, 1, 0)(0, 1, 1)
+# order read off the ACF/PACF scored 7471 MW there: regular differencing is
+# over-differencing at a 13 to 36 hour horizon.
+DEFAULT_ORDER: Tuple[int, int, int] = (2, 0, 0)
+DEFAULT_SEASONAL_ORDER: Tuple[int, int, int, int] = (1, 1, 1, 24)
 
 # Rolling window used for estimation. Long enough for the seasonal terms to be
 # identified, short enough to track the post-2022 shift in consumption levels.
