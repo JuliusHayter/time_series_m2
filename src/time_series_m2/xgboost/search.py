@@ -31,9 +31,14 @@ def grid_search(
     *,
     base: Optional[str] = None,
     grid: Iterable[Dict] = tuple(GRID),
+    feature_set: Optional[str] = None,
     progress: bool = False,
 ) -> pd.DataFrame:
-    """One row per configuration, sorted by validation MAE."""
+    """One row per configuration, sorted by validation MAE.
+
+    ``feature_set`` labels the rows so that tables for several feature sets can be
+    concatenated and still be told apart by ``best_params``.
+    """
     train = frame[mask(frame.index, "train")]
     valid = frame[mask(frame.index, "val")]
     rows = []
@@ -47,6 +52,7 @@ def grid_search(
         )
         result = score(valid["load_mw"], forecast(booster, valid))
         row = {
+            **({"feature_set": feature_set} if feature_set is not None else {}),
             **params,
             "n_trees": int(booster.model.best_iteration) + 1,
             "MAE": result["MAE"],
@@ -64,13 +70,44 @@ def grid_search(
 # stopping sized on train alone.
 TREES_SCALE_UP = 1.2
 
+# Everything a row carries that is a result or a label rather than a knob. Any
+# other column is a hyperparameter and is carried into the refit, so widening
+# GRID cannot silently produce a model that differs from the winner it claims.
+_NOT_A_KNOB = frozenset({"feature_set", "n_trees", "MAE", "RMSE", "MAPE", "bias", "hours"})
 
-def best_params(grid: pd.DataFrame, feature_set: str) -> Dict:
-    """Parameters of the validation winner for one feature set, ready for ``fit``."""
-    row = grid[grid["feature_set"] == feature_set].sort_values("MAE").iloc[0]
-    return dict(
-        max_depth=int(row["max_depth"]),
-        min_child_weight=int(row["min_child_weight"]),
-        n_estimators=int(round(row["n_trees"] * TREES_SCALE_UP)),
-        learning_rate=LEARNING_RATE,
-    )
+
+def best_params(grid: pd.DataFrame, feature_set: Optional[str] = None) -> Dict:
+    """Parameters of the validation winner, ready for ``fit``.
+
+    ``feature_set`` selects among rows produced for several feature sets; omit it
+    when the table holds only one.
+    """
+    table = grid
+    if feature_set is not None:
+        if "feature_set" not in table.columns:
+            raise KeyError(
+                "this grid carries no 'feature_set' column: build it with "
+                "grid_search(..., feature_set=...), or call best_params without a name"
+            )
+        table = table[table["feature_set"] == feature_set]
+        if table.empty:
+            known = sorted(grid["feature_set"].dropna().unique())
+            raise ValueError(f"no rows for feature set {feature_set!r}; known sets: {known}")
+
+    row = table.sort_values("MAE").iloc[0]
+    params = {
+        column: _as_number(row[column])
+        for column in table.columns
+        if column not in _NOT_A_KNOB
+    }
+    params["n_estimators"] = int(round(row["n_trees"] * TREES_SCALE_UP))
+    params["learning_rate"] = LEARNING_RATE
+    return params
+
+
+def _as_number(value):
+    """Undo the float cast a round-trip through CSV inflicts on integer knobs."""
+    if isinstance(value, str):
+        return value
+    number = float(value)
+    return int(number) if number.is_integer() else number
